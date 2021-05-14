@@ -2,9 +2,10 @@ const url = require('url');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const LimitSizeStream = require('./LimitSizeStream');
 
 const server = new http.Server();
-const maxSize = 1048576;
+const maxSize = 1024 * 1024;
 
 server.on('request', async (req, res) => {
   try {
@@ -24,41 +25,31 @@ server.on('request', async (req, res) => {
             res.statusCode = 409;
             return res.end();
           }
-          let size = 0;
-          const body = [];
-          let isLimit;
 
-          req.on('data', function(data) {
-            size += data.length;
-            body.push(data);
+          const limitSizeStream = new LimitSizeStream({limit: maxSize});
+          const file = fs.createWriteStream(filepath, {autoDestroy: true});
 
-            if (size > maxSize) {
-              isLimit = true;
-              res.statusCode = 413;
-              return res.end('File is too big!');
-            }
-          });
+          req
+              .on('error', (e) => {
+                fs.unlink(filepath, function(err) {
+                  if (err) throw err;
+                  res.statusCode = 500;
+                  res.end();
+                });
+              })
+              .pipe(limitSizeStream)
+              .on('error', (e) => {
+                fs.unlink(filepath, function(err) {
+                  if (err) throw err;
+                  res.statusCode = 413;
+                  res.end('File is too large!');
+                });
+              })
+              .pipe(file);
 
-          req.on('error', (e) => {
-            console.error(e.stack);
-            res.statusCode = 500;
-            res.end();
-          });
-
-          req.on('end', ()=>{
-            if (!isLimit) {
-              const file = fs.createWriteStream(filepath, {autoDestroy: true});
-              file.on('error', function(e) {
-                console.error(e.stack);
-                res.statusCode = 500;
-                res.end();
-              }).write(Buffer.concat(body));
-              file.on('finish', ()=>{
-                res.statusCode = 201;
-                return res.end();
-              });
-              file.end();
-            }
+          file.on('finish', ()=>{
+            res.statusCode = 201;
+            return res.end();
           });
         });
         break;

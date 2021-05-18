@@ -8,10 +8,24 @@ app.use(require('koa-bodyparser')());
 const Router = require('koa-router');
 const router = new Router();
 
-router.get('/subscribe', async (ctx, next) => {
+let subscribers = [];
+
+router.get('/subscribe', async (ctx) => {
+  const dataToSend = await new Promise((resolve)=>{
+    subscribers.push(resolve);
+  });
+
+  ctx.body = dataToSend;
 });
 
-router.post('/publish', async (ctx, next) => {
+router.post('/publish', async (ctx) => {
+  if (!ctx.request.body.message) {
+    ctx.status= 406;
+    return ctx.body= 'Empty string is not valid';
+  }
+  subscribers.forEach((resolve) => resolve(ctx.request.body.message));
+  subscribers = [];
+  ctx.body= 'send';
 });
 
 app.use(router.routes());

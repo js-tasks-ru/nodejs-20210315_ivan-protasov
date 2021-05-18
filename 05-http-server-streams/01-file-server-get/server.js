@@ -18,18 +18,19 @@ server.on('request', (req, res) => {
           return;
         }
         const readStream = fs.createReadStream(filepath);
-        readStream.on('open', function() {
-          readStream.pipe(res);
-        });
+        readStream.pipe(res);
         readStream.on('error', function(err) {
           if (err.code === 'ENOENT') {
             res.statusCode = 404;
             res.end();
+          } else {
+            res.statusCode = 500;
+            res.end('Internal server error');
           }
         });
-        req.on('aborted', ()=>{
-          readStream.unpipe(res); // При обрыве соединения необходимо завершить работу стрима. => Антон, это нормальное решение для этого кейса?
-          res.end();
+        req.on('close', ()=>{
+          if (res.finished) return;
+          stream.destroy();
         });
         break;
       default:
